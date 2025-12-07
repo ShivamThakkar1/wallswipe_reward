@@ -10,20 +10,20 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const ADMIN_USER_ID = process.env.ADMIN_USER_ID;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-// Validate environment variables
+// Validate critical environment variables
 if (!BOT_TOKEN) {
     console.error('ERROR: BOT_TOKEN is not set!');
-    process.exit(1);
-}
-
-if (!WEBHOOK_URL) {
-    console.error('ERROR: WEBHOOK_URL is not set!');
     process.exit(1);
 }
 
 if (!MONGODB_URI) {
     console.error('ERROR: MONGODB_URI is not set!');
     process.exit(1);
+}
+
+// WEBHOOK_URL will be set after first deployment
+if (!WEBHOOK_URL) {
+    console.warn('⚠️ WARNING: WEBHOOK_URL is not set! Set it after getting your Render URL.');
 }
 
 // MongoDB Schemas
@@ -66,18 +66,22 @@ app.use(express.json());
 // Initialize bot with webhook
 const bot = new TelegramBot(BOT_TOKEN);
 
-// Set webhook
-const webhookPath = `/bot${BOT_TOKEN}`;
-bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`)
-    .then(() => {
-        console.log(`✅ Webhook set successfully: ${WEBHOOK_URL}${webhookPath}`);
-    })
-    .catch((error) => {
-        console.error('❌ Error setting webhook:', error);
-    });
+// Set webhook only if WEBHOOK_URL is available
+if (WEBHOOK_URL) {
+    const webhookPath = `/bot${BOT_TOKEN}`;
+    bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`)
+        .then(() => {
+            console.log(`✅ Webhook set successfully: ${WEBHOOK_URL}${webhookPath}`);
+        })
+        .catch((error) => {
+            console.error('❌ Error setting webhook:', error);
+        });
+} else {
+    console.log('⚠️ Webhook not set. Add WEBHOOK_URL to environment variables and redeploy.');
+}
 
 // Webhook endpoint
-app.post(webhookPath, (req, res) => {
+app.post('/webhook/*', (req, res) => {
     bot.processUpdate(req.body);
     res.sendStatus(200);
 });
@@ -509,7 +513,11 @@ bot.on('webhook_error', (error) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`🤖 Bot: ${BOT_TOKEN.substring(0, 10)}...`);
-    console.log(`🌐 Webhook URL: ${WEBHOOK_URL}${webhookPath}`);
+    if (WEBHOOK_URL) {
+        console.log(`🌐 Webhook URL: ${WEBHOOK_URL}/webhook/*`);
+    } else {
+        console.log(`⚠️ Webhook URL not set - add WEBHOOK_URL env variable`);
+    }
     console.log(`📢 Channel: ${CHANNEL_USERNAME}`);
     console.log(`👤 Admin ID: ${ADMIN_USER_ID || 'Not set'}`);
 });
