@@ -21,11 +21,6 @@ if (!MONGODB_URI) {
     process.exit(1);
 }
 
-// WEBHOOK_URL will be set after first deployment
-if (!WEBHOOK_URL) {
-    console.warn('⚠️ WARNING: WEBHOOK_URL is not set! Set it after getting your Render URL.');
-}
-
 // MongoDB Schemas
 const userSchema = new mongoose.Schema({
     userId: { type: Number, required: true, unique: true },
@@ -63,28 +58,10 @@ mongoose.connect(MONGODB_URI)
 const app = express();
 app.use(express.json());
 
-// Initialize bot with webhook
-const bot = new TelegramBot(BOT_TOKEN);
+// Initialize bot with polling
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-// Set webhook only if WEBHOOK_URL is available
-if (WEBHOOK_URL) {
-    const webhookPath = `/bot${BOT_TOKEN}`;
-    bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`)
-        .then(() => {
-            console.log(`✅ Webhook set successfully: ${WEBHOOK_URL}${webhookPath}`);
-        })
-        .catch((error) => {
-            console.error('❌ Error setting webhook:', error);
-        });
-} else {
-    console.log('⚠️ Webhook not set. Add WEBHOOK_URL to environment variables and redeploy.');
-}
-
-// Webhook endpoint
-app.post('/webhook/*', (req, res) => {
-    bot.processUpdate(req.body);
-    res.sendStatus(200);
-});
+console.log('🤖 Bot started with polling mode');
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -98,6 +75,23 @@ app.get('/health', (req, res) => {
 // Root endpoint
 app.get('/', (req, res) => {
     res.status(200).send('🎨 WallSwipe Bot is running!');
+});
+
+// Debug endpoint to check bot status
+app.get('/bot-info', async (req, res) => {
+    try {
+        const me = await bot.getMe();
+        const totalUsers = await User.countDocuments();
+        res.json({
+            status: 'Bot is running',
+            mode: 'polling',
+            bot: me,
+            total_users: totalUsers,
+            uptime: process.uptime()
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // Function to save/update user data
@@ -512,14 +506,11 @@ bot.on('webhook_error', (error) => {
 // Start Express server
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server is running on port ${PORT}`);
-    console.log(`🤖 Bot: ${BOT_TOKEN.substring(0, 10)}...`);
-    if (WEBHOOK_URL) {
-        console.log(`🌐 Webhook URL: ${WEBHOOK_URL}/webhook/*`);
-    } else {
-        console.log(`⚠️ Webhook URL not set - add WEBHOOK_URL env variable`);
-    }
+    console.log(`🤖 Bot running in POLLING mode`);
+    console.log(`🤖 Bot token: ${BOT_TOKEN.substring(0, 10)}...`);
     console.log(`📢 Channel: ${CHANNEL_USERNAME}`);
     console.log(`👤 Admin ID: ${ADMIN_USER_ID || 'Not set'}`);
+    console.log(`📊 Check status: ${WEBHOOK_URL || 'http://localhost:' + PORT}/bot-info`);
 });
 
 // Graceful shutdown
